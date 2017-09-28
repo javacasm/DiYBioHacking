@@ -85,6 +85,8 @@ DS1302RTC RTC(CE_PIN, IO_PIN, SCK_PIN);
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
+float fTemperatura;
+float fTemperaturaUmbral=50.0;
 /* ==== END Global Variables ==== */
 
 
@@ -173,7 +175,7 @@ void loop() {
   inputStats.setWindowSecs( windowLength );
 
   while( true ) {
-    sensorValue = analogRead(A0);  // read the analog in value:
+    sensorValue = analogRead(PIN_SENSOR_CORRIENTE);  // read the analog in value:
     inputStats.input(sensorValue);  // log to Stats function
 
     if((unsigned long)(millis() - previousMillis) >= printPeriod) {
@@ -183,19 +185,33 @@ void loop() {
 
       // convert signal sigma value to current in amps
       current_amps = intercept + slope * inputStats.sigma();
-      Serial.print( current_amps );
-      Serial.print( "," );
-      Serial.println( inputStats.sigma() );
+
       lcd.setCursor(0,0);
-      lcd.print(current_amps);
+      printSerialAndLCD(String(current_amps));
+      lcd.print("(");
+      Serial.print( "," );
+      printSerialAndLCD(String(inputStats.sigma()));
+      lcd.print(") ");
+      Serial.print(",");
+
+      showTemp();
+
+      lcd.print(" ");
+      Serial.print(",");
+      lcd.setCursor(0,1);
+
+      showTime();
+
+      Serial.print(",");
+      if(fTemperatura>fTemperaturaUmbral){
+        apaga_Rele();
+      }
+      else{
+        enciende_Rele();
+      }
+      Serial.println();
     }
-  lcd.print(" ");
-  showTemp();
-  Serial.println();
-  lcd.setCursor(0,1);
-  showTime();
-  Serial.println();
-  
+
   }
 
 
@@ -205,49 +221,58 @@ void loop() {
 /* ==== Functions ==== */
 void enciende_Rele(){
   digitalWrite(PIN_RELE,HIGH);
+  lcd.setCursor(13,1);
+  lcd.print(" On");
+  Serial.print(1);
 }
 
 void apaga_Rele(){
   digitalWrite(PIN_RELE,LOW);
+  lcd.setCursor(13,1);
+  lcd.print("Off");
+  Serial.print(0);
 }
 
 
 void setTime(){
 
-    //check for input to set the RTC, minimum length is 12, i.e. yy,m,d,h,m,s
-     {
-        tmElements_t tm;
-        time_t t;
-        //note that the tmElements_t Year member is an offset from 1970,
-        //but the RTC wants the last two digits of the calendar year.
-        //use the convenience macros from Time.h to do the conversions.
-        int y = Serial.parseInt();
-        if (y >= 100 && y < 1000)
-            lcd.println(F("Error: Year must be two digits or four digits!"));
-        else {
-            if (y >= 1000)
-                tm.Year = CalendarYrToTm(y);
-            else    //(y < 100)
-                tm.Year = y2kYearToTm(y);
-            tm.Month = Serial.parseInt();
-            tm.Day = Serial.parseInt();
-            tm.Hour = Serial.parseInt();
-            tm.Minute = Serial.parseInt();
-            tm.Second = Serial.parseInt();
-            t = makeTime(tm);
-      //use the time_t value to ensure correct weekday is set
-            if(RTC.set(t) == 0) { // Success
-              setTime(t);
-              lcd.clear();
-              lcd.print(F("RTC set!"));
-      }       else  {
-              lcd.clear();
-              lcd.print(F("RTC not set!"));
-      }
-            //dump any extraneous input
-            while (Serial.available() > 0) Serial.read();
+
+    tmElements_t tm;
+    time_t t;
+    //note that the tmElements_t Year member is an offset from 1970,
+    //but the RTC wants the last two digits of the calendar year.
+    //use the convenience macros from Time.h to do the conversions.
+    int y = Serial.parseInt();
+    if (y >= 100 && y < 1000) {
+        lcd.println(F("Error: Year must be two digits or four digits!"));
+    } else {
+        if (y >= 1000) {
+            tm.Year = CalendarYrToTm(y);
+        } else {    //(y < 100)
+            tm.Year = y2kYearToTm(y);
         }
+        tm.Month = Serial.parseInt();
+        tm.Day = Serial.parseInt();
+        tm.Hour = Serial.parseInt();
+        tm.Minute = Serial.parseInt();
+        tm.Second = Serial.parseInt();
+        t = makeTime(tm);
+  //use the time_t value to ensure correct weekday is set
+        if(RTC.set(t) == 0) { // Success
+          setTime(t);
+          lcd.clear();
+          lcd.print(F("RTC set!"));
+        } else  {
+          lcd.clear();
+          lcd.print(F("RTC not set!"));
+        }
+        //dump any extraneous input
+        while (Serial.available() > 0) {
+          Serial.read();
+        }
+
     }
+
 
 }
 void printSerialAndLCD(String str){
@@ -276,9 +301,10 @@ void showTemp(){
     if(i!=0){
       Serial.print(",");
       lcd.print(" ");
+
     }
-   
-    printSerialAndLCD(String(sensors.getTempCByIndex(i)));    
+    fTemperatura=sensors.getTempCByIndex(i);
+    printSerialAndLCD(String(fTemperatura));
   }
 }
 /* ==== END Functions ==== */
